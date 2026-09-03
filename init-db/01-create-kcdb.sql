@@ -1,0 +1,3 @@
+CREATE USER kcdbpoc WITH PASSWORD 'kcdbpoc';
+CREATE DATABASE kcdb OWNER kcdbpoc;
+GRANT ALL PRIVILEGES ON DATABASE kcdb TO kcdbpoc;
