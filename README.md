@@ -1,42 +1,66 @@
-# KeycloakPOC
+# KeycloakPOC（`albheader` ブランチ）
 
-Spring Boot アプリケーションを **Keycloak** で OIDC (OpenID Connect) 認証する PoC です。
-未認証で保護ページ (`/index`) にアクセスすると Keycloak のログイン画面へリダイレクトされ、
-ログイン成功後に `/index` がレンダリングされることを確認します。
+AWS ALB の **OIDC 認証** を模擬する PoC です。
+
+ALB が「ユーザー認証 → トークン取得 → ダウンストリームへヘッダーで受け渡し」を担う構成を、
+ローカル環境で再現します。ダウンストリームのコントローラーは、受け取ったトークンで
+Keycloak から UserInfo を取得し、`AppUser` オブジェクトを JSON で返します。
+
+> **補足**: このブランチでは前身の Spring Security（`oauth2Login`）による認証は使いません。
+> 認証は「ALB がヘッダーを付与済み」という前提で、`AlbAuthInterceptor` がトークンを受け取る形に置き換えています。
+
+## 全体の流れ
+
+```
+[AlbSimulator]                         [Spring Boot アプリ (:8080)]           [Keycloak (:9090)]
+  1. Direct Access Grant でトークン取得 ──────────────────────────────────────▶ /token
+  2. /test を呼び出し                     ┌───────────────────────────────┐
+     ヘッダーを付与:                       │ AlbAuthInterceptor            │
+       x-amzn-oidc-accesstoken  ─────────▶│  3. アクセストークンを取り出す  │
+       x-amzn-oidc-identity               │  4. KeycloakClient で          │
+                                          │     UserInfo を取得 ───────────┼──▶ /userinfo
+                                          │  5. AppUser を組み立て          │
+                                          │     req 属性 "appUser" に格納   │
+                                          └──────────────┬────────────────┘
+                                                         ▼
+                                          ┌───────────────────────────────┐
+                                          │ TestController (/test)        │
+                                          │  6. appUser を JSON で返す     │
+                                          └───────────────────────────────┘
+```
+
+各クラスの役割:
+
+| クラス | 役割 |
+| --- | --- |
+| `AlbSimulator` | **ALB を模擬**。Keycloak からトークンを取得し、ALB と同じヘッダーを付けて `/test` を呼ぶ。単体実行用。 |
+| `AlbAuthInterceptor` | 全リクエストをインターセプトし、アクセストークンヘッダーから UserInfo を取得して `AppUser` を組み立て、リクエスト属性に格納する。 |
+| `KeycloakClient` | Keycloak の `/userinfo` を呼び出し、クレームを `AppUser` にマッピングする Spring コンポーネント。 |
+| `TestController` | `/test` エンドポイント。リクエスト属性の `AppUser` を JSON で返す。 |
+| `AppUser` | レスポンスとして返すユーザー情報の DTO。 |
+| `WebConfig` | `AlbAuthInterceptor` を Spring MVC に登録する。 |
+| `KeycloakProbe` | Keycloak のレスポンス構造を確認するための調査用スタンドアロンクラス（アプリ本体のフロー外）。 |
+| `MainPageController` | 前身ブランチの名残（`/index` の Thymeleaf 表示）。本フローには関与しない。 |
 
 ## 技術スタック
 
 | 項目 | 内容 |
 | --- | --- |
 | Java | 21 |
-| Spring Boot | 4.1.1 (spring-boot-starter-security-oauth2-client) |
-| テンプレート | Thymeleaf |
+| Spring Boot | 4.1.1（spring-boot-starter-webmvc / thymeleaf / jdbc） |
+| HTTP クライアント | Java 標準 `java.net.http.HttpClient` |
+| JSON | Jackson |
 | IdP | Keycloak 26.0 |
-| DB | PostgreSQL 16 (Keycloak 用 / アプリ用) |
+| DB | PostgreSQL 16（Keycloak 用） |
 
-## アーキテクチャ / 構成
+## ヘッダー仕様
 
-- **Spring Boot アプリ**: `localhost:8080`
-  - `SecurityConfig` で全リクエストを認証必須にし、`oauth2Login` を有効化。ログイン成功後は `/index` へ遷移。
-  - `MainPageController` が `/index` で Thymeleaf テンプレート `index.html` を返す。
-- **Keycloak**: `localhost:9090`（コンテナ内 8080 → ホスト 9090）
-  - realm: `keycloakpoc`
-  - client: `keycloakpocapp`
-- **PostgreSQL**: `localhost:5433`
-  - Keycloak 用 DB: `keycloak`
-  - アプリ用 DB: `kcdb`（`init-db/01-create-kcdb.sql` で作成）
+`AlbSimulator` が付与し、`AlbAuthInterceptor` が受け取るヘッダー（実際の ALB と同名）:
 
-## 主な設定値（`src/main/resources/application.properties`）
-
-```properties
-server.port=8080
-
-spring.security.oauth2.client.registration.keycloak.client-id=keycloakpocapp
-spring.security.oauth2.client.registration.keycloak.scope=openid,profile,email
-spring.security.oauth2.client.registration.keycloak.authorization-grant-type=authorization_code
-spring.security.oauth2.client.provider.keycloak.issuer-uri=http://localhost:9090/realms/keycloakpoc
-```
-
+| ヘッダー | 内容 | 現状の利用 |
+| --- | --- | --- |
+| `x-amzn-oidc-accesstoken` | アクセストークン（JWT） | `AlbAuthInterceptor` が UserInfo 取得に使用 |
+| `x-amzn-oidc-identity` | ユーザー識別子（`sub`） | 送信のみ（インターセプターでは未使用） |
 
 ## 起動手順
 
@@ -49,16 +73,16 @@ docker compose up -d
 - Keycloak 管理コンソール: http://localhost:9090 （admin / admin）
 - PostgreSQL: `localhost:5433`
 
-### 2. Keycloak 側の初期設定
+### 2. Keycloak 側の設定
 
-管理コンソールで以下を作成します（下記スクリーンショット参照）。
+Realm・Client・User を以下の値で用意します（`AlbSimulator` / `KeycloakClient` の定数と一致させること）:
 
-1. Realm `keycloakpoc` を作成
-2. Client `keycloakpocapp` を作成
-   - Client authentication: ON（confidential）
-   - Valid redirect URIs: `http://localhost:8080/login/oauth2/code/keycloak`
-   - Credentials タブの Client secret を `application.properties` に設定
-3. User を作成し、パスワードを設定（Credentials タブ）
+- Realm: `test`
+- Client: `testclient`
+  - **Client authentication: ON**（confidential）
+  - **Direct access grants: ON**（OFF だとトークン取得が失敗）
+  - Credentials タブの Client secret を `AlbSimulator` / `KeycloakProbe` の `CLIENT_SECRET` に設定
+- User: `khoa`（パスワード `khoa`）
 
 ### 3. Spring Boot アプリを起動
 
@@ -66,86 +90,36 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
-## 動作確認（デモ）
+### 4. ALB 模擬リクエストを実行
 
-### 1. 未認証で `/index` にアクセス → Keycloak ログイン画面へリダイレクト
+`AlbSimulator` の `main` を実行すると、トークン取得 → `/test` 呼び出し → レスポンス表示までを行います。
 
-ブラウザで http://localhost:8080/index を開くと、Keycloak のログイン画面へリダイレクトされます。
+## レスポンス
 
-![未認証アクセス時のログインリダイレクト](docs/images/01-redirect-to-login.png)
-
-### 2. ログイン成功後、`/index` が表示される
-
-作成したユーザーでログインすると `/index` に戻り、`ページへようこそ` が表示されます。
-
-![ログイン後の index ページ](docs/images/02-index-after-login.png)
-
-## Direct Access Grant によるトークン取得と UserInfo の確認
-
-ブラウザのログイン画面を介さずに、ヘルパークラス（`KeycloakProbe`）から
-**Direct Access Grant（`grant_type=password`）** でトークンを取得し、
-そのトークンで `/userinfo` を呼び出してレスポンス構造を確認します。
-（本番で ALB が担うトークン取得を、ローカル検証用に単純化したものです。）
-
-> **補足**: このプローブで使用する Realm・Client・User（`test` / `testclient` / `khoa`）は、
-> アプリ本体が使用する Realm・User（`keycloakpoc` / `keycloakpocapp`）とは**別物**です。
-> レスポンス構造の検証のみを目的とした、テスト用の独立した設定です。
-
-### 前提
-
-- Client の **Direct access grants** を ON にする（OFF だとトークン取得が失敗）
-- トークンリクエストに `scope=openid` を含める
-  - 含めないと `id_token` が発行されず、`/userinfo` が **403** を返す
-- `Authorization` ヘッダーは `"Bearer " + token` とし、`Bearer` の後ろのスペースを忘れない
-  - スペースが無いとヘッダーが解釈されず、`/userinfo` が空ボディを返す
-
-### 1. `/token` エンドポイントのレスポンス
-
-`POST /realms/test/protocol/openid-connect/token`
+現状（カスタムフィールド追加前）の `/test` レスポンス:
 
 ```json
 {
-  "access_token": "eyJ...（JWT・省略）",
-  "expires_in": 300,
-  "refresh_expires_in": 1800,
-  "refresh_token": "eyJ...（省略）",
-  "token_type": "Bearer",
-  "id_token": "eyJ...（省略）",
-  "not-before-policy": 0,
-  "session_state": "eea5f7a8-0871-41c4-b20f-fb553b4452a1",
-  "scope": "openid profile email"
-}
-```
-
-### 2. `/userinfo` エンドポイントのレスポンス（カスタム属性の追加前）
-
-`GET /realms/test/protocol/openid-connect/userinfo`
-（`Authorization: Bearer <access_token>`）
-
-```json
-{
-  "sub": "c258b3d6-8345-4e8b-a0c8-317485c66413",
-  "email_verified": false,
+  "identityToken": "c258b3d6-8345-4e8b-a0c8-317485c66413",
   "name": "Khoa Nguyen",
-  "preferred_username": "khoa",
-  "given_name": "Khoa",
-  "family_name": "Nguyen",
-  "email": "fakekhoaemail@gmail.com"
+  "preferredUsername": null,
+  "givenName": "Khoa",
+  "familyName": "Nguyen",
+  "email": "fakekhoaemail@gmail.com",
+  "personalMessage": "fuck yeah it is working!"
 }
 ```
 
-標準クレームのみが返ります。カスタムフィールド（部署・社員番号など）を返すには、
-Client に **User Attribute マッパー**（Add to userinfo = ON）を追加する必要があります。
+- `identityToken`〜`email` は Keycloak の UserInfo（標準クレーム）由来。
+- `preferredUsername` は現状マッピングしていないため `null`。
+- `personalMessage` はアプリ側で付与している固定値（独自フィールドの例）。
 
-## Keycloak 設定のスクリーンショット
+> **今後の予定**: Keycloak の Client に **User Attribute マッパー**（Add to userinfo = ON）を追加し、
+> 部署・社員番号などのカスタムフィールドを UserInfo に載せる。その際、拡張後のレスポンス例を本 README に追記する。
 
-### Client 設定（`keycloakpocapp`）
+## メモ / 注意点
 
-![Keycloak Client 設定](docs/images/03-keycloak-client.png)
-
-### User 設定
-
-![Keycloak User 設定](docs/images/04-keycloak-user.png)
-
----
-
+- トークンリクエストには `scope=openid` を含める（含めないと `id_token` が発行されず、`/token` が 403 を返す）。
+- `Authorization` ヘッダーは `"Bearer " + token`。`Bearer` の後ろのスペースを忘れると `/userinfo` が空ボディを返す。
+</content>
+</invoke>
