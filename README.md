@@ -80,6 +80,63 @@ docker compose up -d
 
 ![ログイン後の index ページ](docs/images/02-index-after-login.png)
 
+## Direct Access Grant によるトークン取得と UserInfo の確認
+
+ブラウザのログイン画面を介さずに、ヘルパークラス（`KeycloakProbe`）から
+**Direct Access Grant（`grant_type=password`）** でトークンを取得し、
+そのトークンで `/userinfo` を呼び出してレスポンス構造を確認します。
+（本番で ALB が担うトークン取得を、ローカル検証用に単純化したものです。）
+
+> **補足**: このプローブで使用する Realm・Client・User（`test` / `testclient` / `khoa`）は、
+> アプリ本体が使用する Realm・User（`keycloakpoc` / `keycloakpocapp`）とは**別物**です。
+> レスポンス構造の検証のみを目的とした、テスト用の独立した設定です。
+
+### 前提
+
+- Client の **Direct access grants** を ON にする（OFF だとトークン取得が失敗）
+- トークンリクエストに `scope=openid` を含める
+  - 含めないと `id_token` が発行されず、`/userinfo` が **403** を返す
+- `Authorization` ヘッダーは `"Bearer " + token` とし、`Bearer` の後ろのスペースを忘れない
+  - スペースが無いとヘッダーが解釈されず、`/userinfo` が空ボディを返す
+
+### 1. `/token` エンドポイントのレスポンス
+
+`POST /realms/test/protocol/openid-connect/token`
+
+```json
+{
+  "access_token": "eyJ...（JWT・省略）",
+  "expires_in": 300,
+  "refresh_expires_in": 1800,
+  "refresh_token": "eyJ...（省略）",
+  "token_type": "Bearer",
+  "id_token": "eyJ...（省略）",
+  "not-before-policy": 0,
+  "session_state": "eea5f7a8-0871-41c4-b20f-fb553b4452a1",
+  "scope": "openid profile email"
+}
+```
+
+### 2. `/userinfo` エンドポイントのレスポンス（カスタム属性の追加前）
+
+`GET /realms/test/protocol/openid-connect/userinfo`
+（`Authorization: Bearer <access_token>`）
+
+```json
+{
+  "sub": "c258b3d6-8345-4e8b-a0c8-317485c66413",
+  "email_verified": false,
+  "name": "Khoa Nguyen",
+  "preferred_username": "khoa",
+  "given_name": "Khoa",
+  "family_name": "Nguyen",
+  "email": "fakekhoaemail@gmail.com"
+}
+```
+
+標準クレームのみが返ります。カスタムフィールド（部署・社員番号など）を返すには、
+Client に **User Attribute マッパー**（Add to userinfo = ON）を追加する必要があります。
+
 ## Keycloak 設定のスクリーンショット
 
 ### Client 設定（`keycloakpocapp`）
