@@ -28,15 +28,15 @@ public class KeycloakClient {
         System.out.println(appUserJsonNode.toPrettyString());
 
         AppUser appUser = new AppUser();
-        appUser.setIdentityToken(appUserJsonNode.get("sub").asString());
-        appUser.setName(appUserJsonNode.get("name").asString());
-        appUser.setPreferredUsername(appUserJsonNode.get("preferred_username").asString());
-        appUser.setGivenName(appUserJsonNode.get("given_name").asString());
-        appUser.setFamilyName(appUserJsonNode.get("family_name").asString());
-        appUser.setEmail(appUserJsonNode.get("email").asString());
+        appUser.setIdentityToken(appUserJsonNode.path("sub").asString(null));
+        appUser.setName(appUserJsonNode.path("name").asString(null));
+        appUser.setPreferredUsername(appUserJsonNode.path("preferred_username").asString(null));
+        appUser.setGivenName(appUserJsonNode.path("given_name").asString(null));
+        appUser.setFamilyName(appUserJsonNode.path("family_name").asString(null));
+        appUser.setEmail(appUserJsonNode.path("email").asString(null));
         appUser.setPersonalMessage("はじめまして。よろしくお願いします");
-        appUser.setOriginCountry(appUserJsonNode.get("origin_country").asString());
-        appUser.setKanjiName(appUserJsonNode.get("kanji_name").asString());
+        appUser.setOriginCountry(appUserJsonNode.path("origin_country").asString(null));
+        appUser.setKanjiName(appUserJsonNode.path("kanji_name").asString(null));
 
         return appUser;
     }
