@@ -11,6 +11,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+/**
+ * AWS ALB（OIDC 認証）を模擬するローカル実行用のスタンドアロンクラス。
+ * Direct Access Grant で Keycloak からアクセストークンを取得し、
+ * ALB と同じヘッダー（x-amzn-oidc-accesstoken / x-amzn-oidc-identity）を付与して
+ * ダウンストリームの `/test` を呼び出す。main メソッドから単体で実行する。
+ */
 public class AlbSimulator {
     private static final String KEYCLOAK_PATH = "http://localhost:9090";
     private static final String REALM = "test";

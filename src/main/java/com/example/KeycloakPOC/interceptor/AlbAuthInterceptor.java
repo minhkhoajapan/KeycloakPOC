@@ -9,6 +9,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+/**
+ * ALB が付与するヘッダーを前提とした認証インターセプター。
+ * リクエストヘッダー {@code x-amzn-oidc-accesstoken} からアクセストークンを取り出し、
+ * {@link KeycloakClient} で Keycloak の UserInfo を取得して {@link AppUser} を組み立て、
+ * リクエスト属性 "appUser" に格納してダウンストリームのコントローラーへ引き渡す。
+ */
 @Component
 @RequiredArgsConstructor
 public class AlbAuthInterceptor implements HandlerInterceptor {

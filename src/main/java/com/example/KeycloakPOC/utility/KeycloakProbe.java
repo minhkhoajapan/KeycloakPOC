@@ -9,6 +9,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Keycloak のトークン取得と UserInfo のレスポンス構造を確認するための調査用スタンドアロンクラス。
+ * Direct Access Grant でトークンを取得し、`/userinfo` を呼び出して結果を標準出力へ整形表示する。
+ * アプリ本体のフローには組み込まれず、main メソッドから単体で実行する。
+ */
 public class KeycloakProbe {
     private static final String KEYCLOAK_PATH = "http://localhost:9090";
     private static final String REALM = "test";

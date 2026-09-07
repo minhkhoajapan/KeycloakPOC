@@ -10,6 +10,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
+/**
+ * Keycloak の UserInfo エンドポイントを呼び出す専用クライアント。
+ * アクセストークンで `/userinfo` を叩き、返ってきたクレームを {@link AppUser} にマッピングする。
+ */
 @Component
 public class KeycloakClient {
 
