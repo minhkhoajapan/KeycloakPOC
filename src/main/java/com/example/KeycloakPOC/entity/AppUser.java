@@ -11,11 +11,19 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 public class AppUser {
+    // Keycloak標準atrributes begin
     private String identityToken;
     private String name;
     private String preferredUsername;
     private String givenName;
     private String familyName;
     private String email;
+    // Keycloak標準attributes end
+
     private String personalMessage;
+
+    // Keycloakで追加されたクスタムattributes begin
+    private String originCountry;
+    private String kanjiName;
+    // Keycloakで追加されたクスタムattributes end
 }

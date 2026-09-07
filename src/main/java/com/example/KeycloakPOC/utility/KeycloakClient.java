@@ -30,10 +30,14 @@ public class KeycloakClient {
         AppUser appUser = new AppUser();
         appUser.setIdentityToken(appUserJsonNode.get("sub").asString());
         appUser.setName(appUserJsonNode.get("name").asString());
+        appUser.setPreferredUsername(appUserJsonNode.get("preferred_username").asString());
         appUser.setGivenName(appUserJsonNode.get("given_name").asString());
         appUser.setFamilyName(appUserJsonNode.get("family_name").asString());
         appUser.setEmail(appUserJsonNode.get("email").asString());
-        appUser.setPersonalMessage("fuck yeah it is working!");
+        appUser.setPersonalMessage("はじめまして。よろしくお願いします");
+        appUser.setOriginCountry(appUserJsonNode.get("origin_country").asString());
+        appUser.setKanjiName(appUserJsonNode.get("kanji_name").asString());
+
         return appUser;
     }
 

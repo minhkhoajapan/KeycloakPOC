@@ -96,26 +96,43 @@ Realm・Client・User を以下の値で用意します（`AlbSimulator` / `Keyc
 
 ## レスポンス
 
-現状（カスタムフィールド追加前）の `/test` レスポンス:
+`/test` のレスポンス例（Keycloak のカスタム属性を追加済み）:
 
 ```json
 {
   "identityToken": "c258b3d6-8345-4e8b-a0c8-317485c66413",
   "name": "Khoa Nguyen",
-  "preferredUsername": null,
+  "preferredUsername": "khoa",
   "givenName": "Khoa",
   "familyName": "Nguyen",
   "email": "fakekhoaemail@gmail.com",
-  "personalMessage": "fuck yeah it is working!"
+  "personalMessage": "はじめまして。よろしくお願いします",
+  "originCountry": "Vietnam",
+  "kanjiName": "明科"
 }
 ```
 
-- `identityToken`〜`email` は Keycloak の UserInfo（標準クレーム）由来。
-- `preferredUsername` は現状マッピングしていないため `null`。
-- `personalMessage` はアプリ側で付与している固定値（独自フィールドの例）。
+`AppUser` のフィールドは 3 種類に分かれます:
 
-> **今後の予定**: Keycloak の Client に **User Attribute マッパー**（Add to userinfo = ON）を追加し、
-> 部署・社員番号などのカスタムフィールドを UserInfo に載せる。その際、拡張後のレスポンス例を本 README に追記する。
+| 区分 | フィールド | 由来 |
+| --- | --- | --- |
+| Keycloak 標準クレーム | `identityToken`(=`sub`) / `name` / `preferredUsername` / `givenName` / `familyName` / `email` | Keycloak の UserInfo をそのままマッピング |
+| アプリ独自 | `personalMessage` | アプリ側で付与している固定値 |
+| Keycloak カスタム属性 | `originCountry`(=`origin_country`) / `kanjiName`(=`kanji_name`) | ユーザー属性 + User Attribute マッパー経由で UserInfo に追加 |
+
+### カスタム属性の追加方法
+
+`originCountry` / `kanjiName` のようなカスタムフィールドは、以下の手順で UserInfo に載せています:
+
+1. **Realm settings → User profile** で属性を定義（例: `origin_country` / `kanji_name`）。
+   - もしくは JSON editor で `"unmanagedAttributePolicy": "ENABLED"` にして任意属性を許可。
+2. **Users → khoa → Attributes** で各属性に値を設定。
+3. **Clients → `testclient` → Client scopes → `testclient-dedicated` → Add mapper → User Attribute** でマッパーを追加。
+   - User Attribute: 読み取り元のキー（例: `origin_country`）
+   - Token Claim Name: UserInfo に出るキー（例: `origin_country`）
+   - **Add to userinfo: ON**（これが無いと `/userinfo` に出ない）
+4. アプリ側で [AppUser.java](src/main/java/com/example/KeycloakPOC/entity/AppUser.java) にフィールドを追加し、
+   [KeycloakClient.java](src/main/java/com/example/KeycloakPOC/utility/KeycloakClient.java) の `getUserInfo` でマッピングする。
 
 ## メモ / 注意点
 
